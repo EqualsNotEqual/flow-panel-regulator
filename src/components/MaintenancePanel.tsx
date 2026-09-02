@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { PanelProps } from '@grafana/data';
+import { Combobox } from '@grafana/ui';
 import { MaintenancePanelOptions } from '../types';
 import { RawNode, RawRelationship, fetchAll } from '../utils/graphData';
 import { createNode, createRelationship, deleteNode, deleteRelationship } from '../utils/writeOps';
+import { getVariableOptions } from '../utils/predefinedVariables';
 
 interface Props extends PanelProps<MaintenancePanelOptions> {}
 
@@ -97,6 +99,13 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
 
   const reload = useCallback(() => setReloadTick((t) => t + 1), []);
 
+  // Predefined, autocomplete-only lists -- maintained by editing the $node /
+  // $flow dashboard variables (Dashboard settings -> Variables), not here.
+  // Recomputed every render (cheap in-memory lookup) so edits to those
+  // variables show up without needing this panel to reload separately.
+  const nodeLabelOptions = getVariableOptions('node');
+  const flowTypeOptions = getVariableOptions('flow');
+
   const [nodeLabel, setNodeLabel] = useState('');
   const [nodeName, setNodeName] = useState('');
   const [sourceId, setSourceId] = useState('');
@@ -186,7 +195,14 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
           <div style={{ color: '#3b82f6', fontWeight: 700, fontSize: 14 }}>+ Add node</div>
           <div>
             <div style={labelStyle}>Label</div>
-            <input className="tf-input" autoComplete="off" style={{ ...inputStyle, width: '100%' }} placeholder="e.g. Desk" value={nodeLabel} onChange={(e) => setNodeLabel(e.target.value)} />
+            <Combobox
+              options={nodeLabelOptions}
+              value={nodeLabel || null}
+              onChange={(opt) => setNodeLabel(opt ? String(opt.value) : '')}
+              placeholder="Select…"
+              noOptionsMessage="No labels defined -- add one to the $node dashboard variable"
+              isClearable
+            />
           </div>
           <div>
             <div style={labelStyle}>Name</div>
@@ -223,7 +239,14 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
           </div>
           <div>
             <div style={labelStyle}>Type</div>
-            <input className="tf-input" autoComplete="off" style={{ ...inputStyle, width: '100%' }} placeholder="e.g. SENDS_TO" value={relType} onChange={(e) => setRelType(e.target.value)} />
+            <Combobox
+              options={flowTypeOptions}
+              value={relType || null}
+              onChange={(opt) => setRelType(opt ? String(opt.value) : '')}
+              placeholder="Select…"
+              noOptionsMessage="No types defined -- add one to the $flow dashboard variable"
+              isClearable
+            />
           </div>
           <div style={rowStyle}>
             <input className="tf-input" autoComplete="off" style={{ ...inputStyle, flex: 1 }} placeholder="product (optional)" value={relProduct} onChange={(e) => setRelProduct(e.target.value)} />
