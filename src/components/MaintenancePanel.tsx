@@ -4,7 +4,7 @@ import { Combobox } from '@grafana/ui';
 import { MaintenancePanelOptions } from '../types';
 import { RawNode, RawRelationship, fetchAll } from '../utils/graphData';
 import { createNode, createRelationship, deleteNode, deleteRelationship } from '../utils/writeOps';
-import { getVariableOptions } from '../utils/predefinedVariables';
+import { getVariableOptions, getVariableOptionByText } from '../utils/predefinedVariables';
 
 interface Props extends PanelProps<MaintenancePanelOptions> {}
 
@@ -110,12 +110,17 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
   const [nodeName, setNodeName] = useState('');
   const [sourceId, setSourceId] = useState('');
   const [targetId, setTargetId] = useState('');
-  const [relType, setRelType] = useState('');
-  const [relProduct, setRelProduct] = useState('');
+  const [relTypeText, setRelTypeText] = useState(''); // the selected row's unique `text`, e.g. "SEND_TRADES (UST, TT)"
   const [relProtocol, setRelProtocol] = useState('');
   const [relDesks, setRelDesks] = useState('');
   const [deleteNodeId, setDeleteNodeId] = useState('');
   const [deleteRelId, setDeleteRelId] = useState('');
+
+  // The selected row carries both the real Cypher relationship type (its
+  // `value`, which several rows can share) and whatever predefined
+  // attributes that specific combination has (product, tradeType, ...) --
+  // both come from the one Type selection, nothing typed separately.
+  const selectedFlow = relTypeText ? getVariableOptionByText('flow', relTypeText) : null;
 
   async function run(action: () => Promise<any>) {
     setBusy(true);
@@ -139,18 +144,16 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
   };
 
   const handleAddFlow = () => {
-    if (!sourceId || !targetId || !relType.trim()) return;
+    if (!sourceId || !targetId || !selectedFlow) return;
     run(async () => {
-      const properties: Record<string, any> = {};
-      if (relProduct.trim()) properties.product = relProduct.trim();
+      const properties: Record<string, any> = { ...selectedFlow.properties };
       if (relProtocol.trim()) properties.protocol = relProtocol.trim();
       if (relDesks.trim())
         properties.desks = relDesks
           .split(',')
           .map((d) => d.trim())
           .filter(Boolean);
-      await createRelationship(options.datasourceName, sourceId, targetId, relType.trim(), properties);
-      setRelProduct('');
+      await createRelationship(options.datasourceName, sourceId, targetId, selectedFlow.value, properties);
       setRelProtocol('');
       setRelDesks('');
     });
@@ -241,15 +244,14 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
             <div style={labelStyle}>Type</div>
             <Combobox
               options={flowTypeOptions}
-              value={relType || null}
-              onChange={(opt) => setRelType(opt ? String(opt.value) : '')}
+              value={relTypeText || null}
+              onChange={(opt) => setRelTypeText(opt ? String(opt.value) : '')}
               placeholder="Select…"
               noOptionsMessage="No types defined -- add one to the $flow dashboard variable"
               isClearable
             />
           </div>
           <div style={rowStyle}>
-            <input className="tf-input" autoComplete="off" style={{ ...inputStyle, flex: 1 }} placeholder="product (optional)" value={relProduct} onChange={(e) => setRelProduct(e.target.value)} />
             <input className="tf-input" autoComplete="off" style={{ ...inputStyle, flex: 1 }} placeholder="protocol (optional)" value={relProtocol} onChange={(e) => setRelProtocol(e.target.value)} />
           </div>
           <input className="tf-input" autoComplete="off" style={inputStyle} placeholder="desks, comma-separated (optional)" value={relDesks} onChange={(e) => setRelDesks(e.target.value)} />
