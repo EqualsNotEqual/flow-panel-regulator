@@ -1,0 +1,37 @@
+{
+  "name": "tradeflow-maintenance-panel",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Create/edit/delete UI for TradeFlow Mapper's Memgraph topology, firing Cypher through the neo4j Grafana datasource.",
+  "scripts": {
+    "build": "webpack --config ./.config/webpack/webpack.config.js --env production",
+    "dev": "webpack --watch --config ./.config/webpack/webpack.config.js --env development",
+    "typecheck": "tsc --noEmit"
+  },
+  "author": "rshashi",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@emotion/css": "^11.13.0",
+    "@grafana/data": "^13.0.0",
+    "@grafana/runtime": "^13.0.0",
+    "@grafana/ui": "^13.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "rxjs": "^7.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "copy-webpack-plugin": "^12.0.0",
+    "css-loader": "^7.1.0",
+    "style-loader": "^4.0.0",
+    "ts-loader": "^9.5.0",
+    "typescript": "^5.6.0",
+    "webpack": "^5.95.0",
+    "webpack-cli": "^5.1.0"
+  }
+}

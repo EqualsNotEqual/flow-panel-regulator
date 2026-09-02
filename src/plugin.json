@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
+  "type": "panel",
+  "name": "TradeFlow Maintenance",
+  "id": "tradeflow-maintenance-panel",
+  "info": {
+    "keywords": ["panel", "graph", "topology", "trading", "crud"],
+    "description": "Create, edit, and delete TradeFlow Mapper topology (nodes and relationships) by firing Cypher through the same neo4j datasource connection Flow Panel reads through.",
+    "author": { "name": "rshashi" },
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "links": [],
+    "screenshots": [],
+    "version": "0.2.0",
+    "updated": "2026-09-01"
+  },
+  "dependencies": {
+    "grafanaDependency": ">=11.0.0",
+    "plugins": []
+  }
+}
