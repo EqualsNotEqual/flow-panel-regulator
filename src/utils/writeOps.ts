@@ -5,9 +5,9 @@
 // escaping this relies on for injection safety.
 import { assertValidIdentifier, cypherPropsLiteral, cypherLiteral, runCypher } from './cypherClient';
 
-export async function createNode(datasourceName: string, label: string, properties: Record<string, any>) {
-  assertValidIdentifier(label, 'label');
-  await runCypher(datasourceName, `CREATE (n:${label}) SET n = ${cypherPropsLiteral(properties)} RETURN n`);
+export async function createNode(datasourceName: string, labels: string[], properties: Record<string, any>) {
+  labels.forEach((label) => assertValidIdentifier(label, 'label'));
+  await runCypher(datasourceName, `CREATE (n:${labels.join(':')}) SET n = ${cypherPropsLiteral(properties)} RETURN n`);
 }
 
 export async function createRelationship(
@@ -23,6 +23,21 @@ export async function createRelationship(
     `MATCH (a), (b) WHERE elementId(a) = ${cypherLiteral(sourceId)} AND elementId(b) = ${cypherLiteral(targetId)} ` +
       `CREATE (a)-[r:${type}]->(b) SET r = ${cypherPropsLiteral(properties)} RETURN r`
   );
+}
+
+export async function updateNodeLabels(
+  datasourceName: string,
+  id: string,
+  labelsToAdd: string[],
+  labelsToRemove: string[]
+) {
+  labelsToAdd.forEach((label) => assertValidIdentifier(label, 'label'));
+  labelsToRemove.forEach((label) => assertValidIdentifier(label, 'label'));
+  const clauses: string[] = [];
+  if (labelsToAdd.length > 0) clauses.push(`SET n:${labelsToAdd.join(':')}`);
+  if (labelsToRemove.length > 0) clauses.push(`REMOVE n:${labelsToRemove.join(':')}`);
+  if (clauses.length === 0) return;
+  await runCypher(datasourceName, `MATCH (n) WHERE elementId(n) = ${cypherLiteral(id)} ${clauses.join(' ')} RETURN n`);
 }
 
 export async function deleteNode(datasourceName: string, label: string, id: string) {

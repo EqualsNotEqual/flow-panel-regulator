@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { PanelProps } from '@grafana/data';
-import { Combobox } from '@grafana/ui';
+import { Combobox, MultiCombobox } from '@grafana/ui';
 import { MaintenancePanelOptions } from '../types';
 import { RawNode, RawRelationship, fetchAll } from '../utils/graphData';
-import { createNode, createRelationship, deleteNode, deleteRelationship } from '../utils/writeOps';
+import { createNode, createRelationship, deleteNode, deleteRelationship, updateNodeLabels } from '../utils/writeOps';
 import { getVariableOptions, getVariableOptionByText } from '../utils/predefinedVariables';
 
 interface Props extends PanelProps<MaintenancePanelOptions> {}
@@ -61,7 +61,7 @@ const buttonStyle: React.CSSProperties = {
 const deleteButtonStyle: React.CSSProperties = { ...buttonStyle, background: '#7f1d1d' };
 
 function nodeOptionLabel(n: RawNode): string {
-  return `${n.properties?.name ?? n.id} (${n.labels[0]})`;
+  return `${n.properties?.name ?? n.id} (${n.labels.join(', ')})`;
 }
 
 function relOptionLabel(r: RawRelationship, nodes: RawNode[]): string {
@@ -106,7 +106,7 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
   const nodeLabelOptions = getVariableOptions('node');
   const flowTypeOptions = getVariableOptions('flow');
 
-  const [nodeLabel, setNodeLabel] = useState('');
+  const [nodeLabel, setNodeLabel] = useState<string[]>([]);
   const [nodeName, setNodeName] = useState('');
   const [sourceId, setSourceId] = useState('');
   const [targetId, setTargetId] = useState('');
@@ -115,6 +115,8 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
   const [relDesks, setRelDesks] = useState('');
   const [deleteNodeId, setDeleteNodeId] = useState('');
   const [deleteRelId, setDeleteRelId] = useState('');
+  const [editNodeId, setEditNodeId] = useState('');
+  const [labelsDraft, setLabelsDraft] = useState<string[]>([]);
 
   // The selected row carries both the real Cypher relationship type (its
   // `value`, which several rows can share) and whatever predefined
@@ -136,9 +138,9 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
   }
 
   const handleAddNode = () => {
-    if (!nodeLabel.trim() || !nodeName.trim()) return;
+    if (nodeLabel.length === 0 || !nodeName.trim()) return;
     run(async () => {
-      await createNode(options.datasourceName, nodeLabel.trim(), { name: nodeName.trim() });
+      await createNode(options.datasourceName, nodeLabel, { name: nodeName.trim() });
       setNodeName('');
     });
   };
@@ -176,6 +178,25 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
     });
   };
 
+  const handleSelectEditNode = (id: string) => {
+    setEditNodeId(id);
+    const n = nodes.find((x) => x.id === id);
+    setLabelsDraft(n ? [...n.labels] : []);
+  };
+
+  const handleUpdateLabels = () => {
+    const n = nodes.find((x) => x.id === editNodeId);
+    if (!n || labelsDraft.length === 0) return;
+    const toAdd = labelsDraft.filter((l) => !n.labels.includes(l));
+    const toRemove = n.labels.filter((l) => !labelsDraft.includes(l));
+    if (toAdd.length === 0 && toRemove.length === 0) return;
+    run(async () => {
+      await updateNodeLabels(options.datasourceName, n.id, toAdd, toRemove);
+      setEditNodeId('');
+      setLabelsDraft([]);
+    });
+  };
+
   return (
     <div
       style={{
@@ -198,13 +219,12 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
           <div style={{ color: '#3b82f6', fontWeight: 700, fontSize: 14 }}>+ Add node</div>
           <div>
             <div style={labelStyle}>Label</div>
-            <Combobox
+            <MultiCombobox
               options={nodeLabelOptions}
-              value={nodeLabel || null}
-              onChange={(opt) => setNodeLabel(opt ? String(opt.value) : '')}
+              value={nodeLabel}
+              onChange={(opts) => setNodeLabel(opts.map((o) => String(o.value)))}
               placeholder="Select…"
               noOptionsMessage="No labels defined -- add one to the $node dashboard variable"
-              isClearable
             />
           </div>
           <div>
@@ -287,6 +307,30 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
           </select>
           <button style={deleteButtonStyle} onClick={handleDeleteRel} disabled={busy || !deleteRelId}>
             Delete flow
+          </button>
+        </div>
+
+        <div style={cardStyle}>
+          <div style={{ color: '#f59e0b', fontWeight: 700, fontSize: 14 }}>Update labels</div>
+          <select style={{ ...selectStyle, width: '100%' }} value={editNodeId} onChange={(e) => handleSelectEditNode(e.target.value)}>
+            <option value="">Pick a node…</option>
+            {nodes.map((n) => (
+              <option key={n.id} value={n.id}>
+                {nodeOptionLabel(n)}
+              </option>
+            ))}
+          </select>
+          {editNodeId && (
+            <MultiCombobox
+              options={nodeLabelOptions}
+              value={labelsDraft}
+              onChange={(opts) => setLabelsDraft(opts.map((o) => String(o.value)))}
+              placeholder="Select…"
+              noOptionsMessage="No labels defined -- add one to the $node dashboard variable"
+            />
+          )}
+          <button style={buttonStyle} onClick={handleUpdateLabels} disabled={busy || !editNodeId || labelsDraft.length === 0}>
+            Update labels
           </button>
         </div>
       </div>
