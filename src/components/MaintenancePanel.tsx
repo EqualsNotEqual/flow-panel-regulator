@@ -99,6 +99,23 @@ function PropertiesPreview({ properties }: { properties?: Record<string, any> })
   );
 }
 
+// A blank value removes the property (SET n += {...} drops any key whose
+// value is null). A comma means multiple values -- same convention Add
+// Flow's "desks" field already uses -- so typing "TBAs, Pool" produces a
+// real Cypher list, not a literal string, letting later queries do exact
+// membership checks against it instead of fragile substring matching.
+function parsePropValue(raw: string): string | string[] | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (trimmed.includes(',')) {
+    return trimmed
+      .split(',')
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
+  return trimmed;
+}
+
 function nodeOptionLabel(n: RawNode): string {
   return `${n.properties?.name ?? n.id} (${n.labels.join(', ')})`;
 }
@@ -265,10 +282,8 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
   const handleUpdateRelProps = () => {
     if (!editRelId || !propKey.trim()) return;
     run(async () => {
-      // A blank value removes the property -- Cypher's SET r += {...} drops
-      // any key whose value is null from the entity entirely.
       await updateRelationshipProperties(options.datasourceName, editRelId, {
-        [propKey.trim()]: propValue.trim() || null,
+        [propKey.trim()]: parsePropValue(propValue),
       });
       setPropKey('');
       setPropValue('');
@@ -278,9 +293,8 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
   const handleUpdateNodeProps = () => {
     if (!editNodePropsId || !nodePropKey.trim()) return;
     run(async () => {
-      // Same rule as flow properties: a blank value removes the key.
       await updateNodeProperties(options.datasourceName, editNodePropsId, {
-        [nodePropKey.trim()]: nodePropValue.trim() || null,
+        [nodePropKey.trim()]: parsePropValue(nodePropValue),
       });
       setNodePropKey('');
       setNodePropValue('');
@@ -456,7 +470,7 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
           </select>
           {editRelId && <PropertiesPreview properties={selectedRelForProps?.properties} />}
           <input className="tf-input" autoComplete="off" style={inputStyle} placeholder="property key, e.g. product" value={propKey} onChange={(e) => setPropKey(e.target.value)} />
-          <input className="tf-input" autoComplete="off" style={inputStyle} placeholder="value, e.g. MBS (blank removes it)" value={propValue} onChange={(e) => setPropValue(e.target.value)} />
+          <input className="tf-input" autoComplete="off" style={inputStyle} placeholder="value, e.g. TBAs, Pool (comma = list, blank removes it)" value={propValue} onChange={(e) => setPropValue(e.target.value)} />
           <button style={buttonStyle} onClick={handleUpdateRelProps} disabled={busy || !editRelId || !propKey.trim()}>
             Set property
           </button>
@@ -474,7 +488,7 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
           </select>
           {editNodePropsId && <PropertiesPreview properties={selectedNodeForProps?.properties} />}
           <input className="tf-input" autoComplete="off" style={inputStyle} placeholder="property key, e.g. url" value={nodePropKey} onChange={(e) => setNodePropKey(e.target.value)} />
-          <input className="tf-input" autoComplete="off" style={inputStyle} placeholder="value, e.g. https://… (blank removes it)" value={nodePropValue} onChange={(e) => setNodePropValue(e.target.value)} />
+          <input className="tf-input" autoComplete="off" style={inputStyle} placeholder="value, e.g. TBAs, Pool (comma = list, blank removes it)" value={nodePropValue} onChange={(e) => setNodePropValue(e.target.value)} />
           <button style={buttonStyle} onClick={handleUpdateNodeProps} disabled={busy || !editNodePropsId || !nodePropKey.trim()}>
             Set property
           </button>
