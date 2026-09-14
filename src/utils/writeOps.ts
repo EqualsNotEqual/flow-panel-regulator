@@ -40,6 +40,20 @@ export async function updateNodeLabels(
   await runCypher(datasourceName, `MATCH (n) WHERE elementId(n) = ${cypherLiteral(id)} ${clauses.join(' ')} RETURN n`);
 }
 
+export async function updateRelationshipProperties(datasourceName: string, id: string, properties: Record<string, any>) {
+  await runCypher(
+    datasourceName,
+    `MATCH ()-[r]->() WHERE elementId(r) = ${cypherLiteral(id)} SET r += ${cypherPropsLiteral(properties)} RETURN r`
+  );
+}
+
+export async function updateNodeProperties(datasourceName: string, id: string, properties: Record<string, any>) {
+  await runCypher(
+    datasourceName,
+    `MATCH (n) WHERE elementId(n) = ${cypherLiteral(id)} SET n += ${cypherPropsLiteral(properties)} RETURN n`
+  );
+}
+
 export async function deleteNode(datasourceName: string, label: string, id: string) {
   assertValidIdentifier(label, 'label');
   await runCypher(

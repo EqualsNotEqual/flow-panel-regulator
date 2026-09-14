@@ -3,7 +3,15 @@ import { PanelProps } from '@grafana/data';
 import { Combobox, MultiCombobox } from '@grafana/ui';
 import { MaintenancePanelOptions } from '../types';
 import { RawNode, RawRelationship, fetchAll } from '../utils/graphData';
-import { createNode, createRelationship, deleteNode, deleteRelationship, updateNodeLabels } from '../utils/writeOps';
+import {
+  createNode,
+  createRelationship,
+  deleteNode,
+  deleteRelationship,
+  updateNodeLabels,
+  updateNodeProperties,
+  updateRelationshipProperties,
+} from '../utils/writeOps';
 import { getVariableOptions, getVariableOptionByText } from '../utils/predefinedVariables';
 
 interface Props extends PanelProps<MaintenancePanelOptions> {}
@@ -59,6 +67,37 @@ const buttonStyle: React.CSSProperties = {
   border: 'none',
 };
 const deleteButtonStyle: React.CSSProperties = { ...buttonStyle, background: '#7f1d1d' };
+const propertiesPreviewStyle: React.CSSProperties = {
+  fontSize: 12,
+  fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
+  color: '#94a3b8',
+  background: '#020617',
+  border: '1px solid #334155',
+  borderRadius: 5,
+  padding: '8px 10px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+};
+
+// Read-only preview of a node/relationship's current properties, shown once
+// one is picked in the Update-properties cards -- so you can see what's
+// already there before deciding what key to add or overwrite.
+function PropertiesPreview({ properties }: { properties?: Record<string, any> }) {
+  const entries = Object.entries(properties ?? {});
+  if (entries.length === 0) {
+    return <div style={propertiesPreviewStyle}>No properties yet</div>;
+  }
+  return (
+    <div style={propertiesPreviewStyle}>
+      {entries.map(([k, v]) => (
+        <div key={k}>
+          <span style={{ color: '#e2e8f0' }}>{k}</span>: {Array.isArray(v) ? v.join(', ') : String(v)}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function nodeOptionLabel(n: RawNode): string {
   return `${n.properties?.name ?? n.id} (${n.labels.join(', ')})`;
@@ -106,10 +145,27 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
   const nodeLabelOptions = getVariableOptions('node');
   const flowTypeOptions = getVariableOptions('flow');
 
+  // Labels actually present on loaded nodes -- distinct from nodeLabelOptions
+  // (the predefined $node variable, used when creating a brand-new node).
+  // This one drives the Source/Target filters, so it only ever offers labels
+  // that would actually narrow the list to something.
+  const graphLabelOptions = useMemo(() => {
+    const labels = new Set<string>();
+    nodes.forEach((n) => n.labels.forEach((l) => labels.add(l)));
+    return Array.from(labels)
+      .sort()
+      .map((l) => ({ value: l, label: l }));
+  }, [nodes]);
+
   const [nodeLabel, setNodeLabel] = useState<string[]>([]);
   const [nodeName, setNodeName] = useState('');
   const [sourceId, setSourceId] = useState('');
   const [targetId, setTargetId] = useState('');
+  const [sourceLabelFilter, setSourceLabelFilter] = useState('');
+  const [targetLabelFilter, setTargetLabelFilter] = useState('');
+
+  const sourceOptions = sourceLabelFilter ? nodes.filter((n) => n.labels.includes(sourceLabelFilter)) : nodes;
+  const targetOptions = targetLabelFilter ? nodes.filter((n) => n.labels.includes(targetLabelFilter)) : nodes;
   const [relTypeText, setRelTypeText] = useState(''); // the selected row's unique `text`, e.g. "SEND_TRADES (UST, TT)"
   const [relProtocol, setRelProtocol] = useState('');
   const [relDesks, setRelDesks] = useState('');
@@ -117,6 +173,15 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
   const [deleteRelId, setDeleteRelId] = useState('');
   const [editNodeId, setEditNodeId] = useState('');
   const [labelsDraft, setLabelsDraft] = useState<string[]>([]);
+  const [editRelId, setEditRelId] = useState('');
+  const [propKey, setPropKey] = useState('');
+  const [propValue, setPropValue] = useState('');
+  const [editNodePropsId, setEditNodePropsId] = useState('');
+  const [nodePropKey, setNodePropKey] = useState('');
+  const [nodePropValue, setNodePropValue] = useState('');
+
+  const selectedRelForProps = rels.find((r) => r.id === editRelId);
+  const selectedNodeForProps = nodes.find((n) => n.id === editNodePropsId);
 
   // The selected row carries both the real Cypher relationship type (its
   // `value`, which several rows can share) and whatever predefined
@@ -197,6 +262,31 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
     });
   };
 
+  const handleUpdateRelProps = () => {
+    if (!editRelId || !propKey.trim()) return;
+    run(async () => {
+      // A blank value removes the property -- Cypher's SET r += {...} drops
+      // any key whose value is null from the entity entirely.
+      await updateRelationshipProperties(options.datasourceName, editRelId, {
+        [propKey.trim()]: propValue.trim() || null,
+      });
+      setPropKey('');
+      setPropValue('');
+    });
+  };
+
+  const handleUpdateNodeProps = () => {
+    if (!editNodePropsId || !nodePropKey.trim()) return;
+    run(async () => {
+      // Same rule as flow properties: a blank value removes the key.
+      await updateNodeProperties(options.datasourceName, editNodePropsId, {
+        [nodePropKey.trim()]: nodePropValue.trim() || null,
+      });
+      setNodePropKey('');
+      setNodePropValue('');
+    });
+  };
+
   return (
     <div
       style={{
@@ -240,9 +330,19 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
           <div style={{ color: '#10b981', fontWeight: 700, fontSize: 14 }}>+ Add flow</div>
           <div>
             <div style={labelStyle}>Source</div>
-            <select style={{ ...selectStyle, width: '100%' }} value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
+            <Combobox
+              options={graphLabelOptions}
+              value={sourceLabelFilter || null}
+              onChange={(opt) => {
+                setSourceLabelFilter(opt ? String(opt.value) : '');
+                setSourceId('');
+              }}
+              placeholder="Filter by label (optional)"
+              isClearable
+            />
+            <select style={{ ...selectStyle, width: '100%', marginTop: 6 }} value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
               <option value="">Select…</option>
-              {nodes.map((n) => (
+              {sourceOptions.map((n) => (
                 <option key={n.id} value={n.id}>
                   {nodeOptionLabel(n)}
                 </option>
@@ -251,9 +351,19 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
           </div>
           <div>
             <div style={labelStyle}>Target</div>
-            <select style={{ ...selectStyle, width: '100%' }} value={targetId} onChange={(e) => setTargetId(e.target.value)}>
+            <Combobox
+              options={graphLabelOptions}
+              value={targetLabelFilter || null}
+              onChange={(opt) => {
+                setTargetLabelFilter(opt ? String(opt.value) : '');
+                setTargetId('');
+              }}
+              placeholder="Filter by label (optional)"
+              isClearable
+            />
+            <select style={{ ...selectStyle, width: '100%', marginTop: 6 }} value={targetId} onChange={(e) => setTargetId(e.target.value)}>
               <option value="">Select…</option>
-              {nodes.map((n) => (
+              {targetOptions.map((n) => (
                 <option key={n.id} value={n.id}>
                   {nodeOptionLabel(n)}
                 </option>
@@ -331,6 +441,42 @@ export const MaintenancePanel: React.FC<Props> = ({ width, height, options, rend
           )}
           <button style={buttonStyle} onClick={handleUpdateLabels} disabled={busy || !editNodeId || labelsDraft.length === 0}>
             Update labels
+          </button>
+        </div>
+
+        <div style={cardStyle}>
+          <div style={{ color: '#f59e0b', fontWeight: 700, fontSize: 14 }}>Update flow properties</div>
+          <select style={{ ...selectStyle, width: '100%' }} value={editRelId} onChange={(e) => setEditRelId(e.target.value)}>
+            <option value="">Pick a flow…</option>
+            {rels.map((r) => (
+              <option key={r.id} value={r.id}>
+                {relOptionLabel(r, nodes)}
+              </option>
+            ))}
+          </select>
+          {editRelId && <PropertiesPreview properties={selectedRelForProps?.properties} />}
+          <input className="tf-input" autoComplete="off" style={inputStyle} placeholder="property key, e.g. product" value={propKey} onChange={(e) => setPropKey(e.target.value)} />
+          <input className="tf-input" autoComplete="off" style={inputStyle} placeholder="value, e.g. MBS (blank removes it)" value={propValue} onChange={(e) => setPropValue(e.target.value)} />
+          <button style={buttonStyle} onClick={handleUpdateRelProps} disabled={busy || !editRelId || !propKey.trim()}>
+            Set property
+          </button>
+        </div>
+
+        <div style={cardStyle}>
+          <div style={{ color: '#f59e0b', fontWeight: 700, fontSize: 14 }}>Update node properties</div>
+          <select style={{ ...selectStyle, width: '100%' }} value={editNodePropsId} onChange={(e) => setEditNodePropsId(e.target.value)}>
+            <option value="">Pick a node…</option>
+            {nodes.map((n) => (
+              <option key={n.id} value={n.id}>
+                {nodeOptionLabel(n)}
+              </option>
+            ))}
+          </select>
+          {editNodePropsId && <PropertiesPreview properties={selectedNodeForProps?.properties} />}
+          <input className="tf-input" autoComplete="off" style={inputStyle} placeholder="property key, e.g. url" value={nodePropKey} onChange={(e) => setNodePropKey(e.target.value)} />
+          <input className="tf-input" autoComplete="off" style={inputStyle} placeholder="value, e.g. https://… (blank removes it)" value={nodePropValue} onChange={(e) => setNodePropValue(e.target.value)} />
+          <button style={buttonStyle} onClick={handleUpdateNodeProps} disabled={busy || !editNodePropsId || !nodePropKey.trim()}>
+            Set property
           </button>
         </div>
       </div>
