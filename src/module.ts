@@ -11,6 +11,6 @@ export const plugin = new PanelPlugin<MaintenancePanelOptions>(MaintenancePanel)
       'and writes through — the same connection used in dashboards’ Queries tab. Must match exactly as ' +
       'configured under Connections → Data sources.',
     defaultValue: defaultMaintenancePanelOptions.datasourceName,
-    category: ['TradeFlow'],
+    category: ['Flow Options'],
   });
 });
